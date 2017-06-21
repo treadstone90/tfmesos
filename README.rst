@@ -28,7 +28,7 @@ Prerequisites
     
 3. (optional) A Distributed Filesystem (eg: `MooseFS <https://moosefs.com>`_)
   
-4. Ensure latest ``TFMesos`` docker image (`tfmesos/tfmesos <https://hub.docker.com/r/tfmesos/tfmesos/>`_) is pulled across the whole cluster
+4. Ensure latest ``TFMesos`` docker image (`treadstone90/tfmesos <https://hub.docker.com/r/treadstone90/tfmesos/>`_) is pulled across the whole cluster
 
 * For ``Mesos < 1.0.0``:
 
@@ -42,7 +42,7 @@ Prerequisites
 
 5. (optional) A Distributed Filesystem (eg: `MooseFS <https://moosefs.com>`_)
 
-6. Ensure latest ``TFMesos`` docker image (`tfmesos/tfmesos <https://hub.docker.com/r/tfmesos/tfmesos/>`_) is pulled across the whole cluster
+6. Ensure latest ``TFMesos`` docker image (`treadstone90/tfmesos <https://hub.docker.com/r/treadstone90/tfmesos/>`_) is pulled across the whole cluster
 
 If you are using ``AWS G2`` instance, here is a `sample <https://github.com/douban/tfmesos/blob/master/misc/setup-aws-g2.sh>`_ script to setup most of there prerequisites.
 
@@ -54,7 +54,7 @@ After setting up the mesos and pulling the docker image on a single node (or a c
 .. code:: bash
 
     $ docker run -e MESOS_MASTER=mesos-master:5050 \
-        -e DOCKER_IMAGE=tfmesos/tfmesos \
+        -e DOCKER_IMAGE=treadstone90/tfmesos \
         --net=host \
         -v /path-to-your-tfmesos-code/tfmesos/examples/plus.py:/tmp/plus.py \
         --rm \
@@ -71,7 +71,7 @@ This mode is called `Between-graph replication` in official `Distributed Tensorf
 
 Most distributed training models that Google has open sourced (such as `mnist_replica <https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dist_test/python/mnist_replica.py>`_ and `inception <https://github.com/tensorflow/models/blob/master/inception/inception/inception_distributed_train.py>`_) are using this mode. In this mode, two kind of Jobs are defined with the names `'ps'` and `'wocker'`. `'ps'` tasks act as `'Parameter Server'` and `'worker'` tasks run the actual training process.
 
-Here we use our modified `'mnist_replica' <https://github.com/douban/tfmesos/blob/master/examples/mnist/mnist_replica.py>`_ as example:
+Here we use our modified `'mnist_replica' <https://github.com/treadstone90/tfmesos/blob/master/examples/mnist/mnist_replica.py>`_ as example:
 
 1. Checkout the `mnist` example codes into a directory in shared filesystem, eg: `/nfs/mnist`
 2. Assume Mesos master is `mesos-master:5050`
