@@ -32,10 +32,10 @@ setup(
     license='BSD License',
     description="Tensorflow on Mesos",
     long_description=find_readme('README.rst'),
-    author="Zhongbo Tian",
-    author_email="tianzhongbo@douban.com",
+    author="Karthik A",
+    author_email="treadstone90@gmail.com",
     download_url=(
-        'https://github.com/douban/tfmesos/archive/%s.tar.gz' % version
+        'https://github.com/treadstone90/tfmesos/archive/%s.tar.gz' % version
     ),
     classifiers=[
         "Intended Audience :: Developers",
