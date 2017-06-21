@@ -14,4 +14,4 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 RUN python -c 'import urllib2;exec(urllib2.urlopen("https://bootstrap.pypa.io/get-pip.py").read())' --no-cache-dir --timeout 1000 && \
     pip install --no-cache-dir --timeout 1000 -r "https://raw.githubusercontent.com/treadstone90/tfmesos/master/requirements.txt" && \
     pip install --no-cache-dir --timeout 1000 "git+https://github.com/treadstone90/tfmesos.git@master#egg=tfmesos"
-ENV DOCKER_IMAGE tfmesos/tfmesos
+ENV DOCKER_IMAGE treadstone90/tfmesos
