@@ -59,7 +59,7 @@ After setting up the mesos and pulling the docker image on a single node (or a c
         -v /path-to-your-tfmesos-code/tfmesos/examples/plus.py:/tmp/plus.py \
         --rm \
         -it \
-        tfmesos/tfmesos \
+        treadstone90/tfmesos \
         python /tmp/plus.py mesos-master:5050
 
 Successfully running the test should result in an output of 42 on the console.
@@ -88,7 +88,7 @@ CPU:
                  -v /etc/group:/etc/group:ro \
                  -u `id -u` \
                  -w /nfs/mnist \
-                 tfmesos/tfmesos \
+                 treadstone90/tfmesos \
                  tfrun -w 1 -s 1  \
                  -V /nfs/mnist:/nfs/mnist \
                  -- python mnist_replica.py \
@@ -106,7 +106,7 @@ GPU (1 GPU per worker):
                  -v /etc/group:/etc/group:ro \
                  -u `id -u` \
                  -w /nfs/mnist \
-                 tfmesos/tfmesos \
+                 treadstone90/tfmesos \
                  tfrun -w 1 -s 1 -Gw 1 -- python mnist_replica.py \
                  --ps_hosts {ps_hosts} --worker_hosts {worker_hosts} \
                  --job_name {job_name} --worker_index {task_index}
@@ -142,7 +142,7 @@ CPU:
                  -v /etc/group:/etc/group:ro \
                  -u `id -u` \
                  -w /tmp/mnist \
-                 tfmesos/tfmesos \
+                 treadstone90/tfmesos \
                  python mnist.py 
 
 GPU (1 GPU per worker):
@@ -156,5 +156,5 @@ GPU (1 GPU per worker):
                  -v /etc/group:/etc/group:ro \
                  -u `id -u` \
                  -w /tmp/mnist \
-                 tfmesos/tfmesos \
+                 treadstone90/tfmesos \
                  python mnist.py --worker-gpus 1
