@@ -33,6 +33,8 @@ def main(argv):
     forward_addresses = response['forward_addresses']
     protocol = response['protocol']
 
+    print("The response is %s " % response)
+
     forward_fd = None
     grpc_addr = '/job:%s/task:%s' % (job_name, task_index)
     if forward_addresses and grpc_addr in forward_addresses:
@@ -69,6 +71,11 @@ def main(argv):
             ps_hosts=ps_hosts, worker_hosts=worker_hosts,
             job_name=job_name, task_index=task_index
         )
+
+        print("The command to run is %s" % cmd)
+        print("Worker index is %s " % task_index)
+        print("Job name is %s " % job_name)
+
         subprocess.check_call(cmd, shell=True, cwd=cwd, stdout=forward_fd)
         if forward_fd:
             forward_fd.close()
