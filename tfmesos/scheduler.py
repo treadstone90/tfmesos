@@ -320,7 +320,8 @@ class TFMesosScheduler(Scheduler):
                 self, framework, self.master, use_addict=True
             )
             self.driver.start()
-            while any((not task.initalized for id, task in self.tasks.iteritems())):
+            while any((not task.initalized
+                       for id, task in self.tasks.iteritems())):
                 if readable(lfd):
                     c, _ = lfd.accept()
                     if readable(c):
@@ -360,14 +361,17 @@ class TFMesosScheduler(Scheduler):
             task = self.tasks[mesos_task_id]
             if self.started:
                 if update.state != 'TASK_FINISHED':
-                    logger.error('Task failed: %s, %s with state %s', task, update.message, update.state)
+                    logger.error('Task failed: %s, %s with state %s', task,
+                                 update.message, update.state)
                     raise RuntimeError(
-                        'Task %s failed! %s with state %s' % (task, update.message, update.state)
+                        'Task %s failed! %s with state %s' %
+                        (task, update.message, update.state)
                     )
                 else:
                     self.job_finished[task.job_name] += 1
             else:
-                logger.warn('Task failed while launching the server: %s, %s with state %s', task,
+                logger.warn('Task failed while launching the server: %s, '
+                            '%s with state %s', task,
                             update.message, update.state)
 
                 if task.connection:
@@ -383,11 +387,14 @@ class TFMesosScheduler(Scheduler):
                     self.tasks[new_task_id] = task
                     driver.reviveOffers()
                 else:
-                    raise RuntimeError('Task %s failed %s with state %s and retries=%s' %
-                                       (task, update.message, update.state, TFMesosScheduler.MAX_FAILURE_COUNT))
+                    raise RuntimeError('Task %s failed %s with state %s and '
+                                       'retries=%s' %
+                                       (task, update.message, update.state,
+                                        TFMesosScheduler.MAX_FAILURE_COUNT))
 
     def can_revive_task(self, task):
-        return self.task_failure_count[self.decorated_task_index(task)] < TFMesosScheduler.MAX_FAILURE_COUNT
+        return self.task_failure_count[self.decorated_task_index(task)] < \
+               TFMesosScheduler.MAX_FAILURE_COUNT
 
     @staticmethod
     def decorated_task_index(task):
@@ -397,7 +404,6 @@ class TFMesosScheduler(Scheduler):
     def _is_terminal_state(task_state):
         return task_state in ["TASK_FINISHED", "TASK_FAILED", "TASK_KILLED",
                               "TASK_ERROR"]
-
 
     def slaveLost(self, driver, agent_id):
         if self.started:
