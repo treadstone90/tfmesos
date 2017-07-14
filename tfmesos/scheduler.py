@@ -210,11 +210,12 @@ class TFMesosScheduler(Scheduler):
         '''
         Offer resources and launch tasks
         '''
-
+        logger.info('Dealing with offers {}'.format(offers))
         for offer in offers:
             if all(task.offered for id, task in self.tasks.iteritems()):
                 self.driver.suppressOffers()
                 driver.declineOffer(offer.id, Dict(refuse_seconds=FOREVER))
+                logger.info('Declined offers forever with id {}'.format(offer))
                 continue
 
             offered_cpus = offered_mem = 0.0
@@ -258,8 +259,8 @@ class TFMesosScheduler(Scheduler):
                         containerizer_type=self.containerizer_type
                     )
                 )
-
-            driver.launchTasks(offer.id, offered_tasks)
+            logger.info('Lauching offers {} with {}'.format(offered_tasks, offer))
+            driver.launchTasks(offer.id, offered_tasks)          
 
     @property
     def targets(self):
