@@ -4,10 +4,12 @@ import sys
 import socket
 import subprocess
 
-import os
+import logging
 import tensorflow as tf
 from tfmesos.utils import send, recv
 
+
+logger = logging.getLogger(__name__)
 
 def main(argv):
     mesos_task_id, maddr = argv[1:]
@@ -17,16 +19,13 @@ def main(argv):
     lfd.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     lfd.bind(('', 0))
     addr = "%s:%s" % (socket.gethostname(), lfd.getsockname()[1])
-    job_name = None
-    task_index = None
-    cpus = None
     c = socket.socket()
     c.connect(maddr)
-    print 'Started task'
-    print(mesos_task_id)
-    print(addr)
+
     send(c, (mesos_task_id, addr))
     response = recv(c)
+    logger.info("Received response {} from {}".format(response, maddr))
+
     cluster_def = response["cluster_def"]
     job_name = response["job_name"]
     task_index = response["task_index"]
@@ -74,14 +73,10 @@ def main(argv):
             job_name=job_name, task_index=task_index
         )
 
-        # try:
         subprocess.check_call(cmd, shell=True, stdout=forward_fd)
-        # finally:
-            # if extra_config['finalizer'] is not None:
-            #     final_cmd = extra_config['finalizer']
-            #     logger.info('Running clean up command {}'.format(final_cmd))
-            #     subprocess.check_call(final_cmd, shell=True)
 
+        if forward_fd:
+            forward_fd.close()
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
