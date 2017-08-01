@@ -22,6 +22,9 @@ def main(argv):
     cpus = None
     c = socket.socket()
     c.connect(maddr)
+    print 'Started task'
+    print(mesos_task_id)
+    print(addr)
     send(c, (mesos_task_id, addr))
     response = recv(c)
     cluster_def = response["cluster_def"]
@@ -72,9 +75,7 @@ def main(argv):
         )
 
         # try:
-        print os.environ['MESOS_SANDBOX']
-        subprocess.check_call(cmd, shell=True,
-                              cwd=os.environ['MESOS_SANDBOX'], stdout=forward_fd)
+        subprocess.check_call(cmd, shell=True, stdout=forward_fd)
         # finally:
             # if extra_config['finalizer'] is not None:
             #     final_cmd = extra_config['finalizer']

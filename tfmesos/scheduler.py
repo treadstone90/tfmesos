@@ -50,6 +50,8 @@ class Task(object):
         self.cpus = cpus
         self.gpus = gpus
         self.mem = mem
+        #Disk quota in mb
+        self.disk = 100000
         self.cmd = cmd
         self.volumes = volumes
         self.offered = False
@@ -290,6 +292,7 @@ class Task(object):
             sys.executable, '-m', '%s.server' % __package__,
             str(self.mesos_task_id), master_addr
         ]
+
         ti.command.value = ' '.join(cmd)
         ti.command.environment.variables = variables = []
         env = Dict()
@@ -407,7 +410,16 @@ class TFMesosScheduler(Scheduler):
         cluster_def = {}
 
         for id, task in iteritems(self.tasks):
-            cluster_def.setdefault(task.job_name, []).append(task.addr)
+            if task.job_name is 'worker':
+                cluster_def.setdefault(task.job_name, []).append(task)
+            else:
+                cluster_def.setdefault(task.job_name, []).append(task.addr)
+
+        worker_tasks = cluster_def['worker']
+        worker_addr = map(lambda x: x.addr, sorted(worker_tasks,
+                                                   key=lambda x: x.task_index))
+
+        cluster_def['worker'] = worker_addr
 
         for id, task in iteritems(self.tasks):
             response = {
@@ -429,7 +441,6 @@ class TFMesosScheduler(Scheduler):
                 task.job_name,
                 task.task_index,
                 task.addr
-
             )
             task.connection.close()
 
@@ -469,10 +480,11 @@ class TFMesosScheduler(Scheduler):
                         task.initalized = True
                         task_start_count += 1
                         logger.info('Task %s with mesos_task_id %s has '
-                                    'registered',
+                                    'registered at addr %s',
                                     '{}:{}'.format(task.job_name,
                                                    task.task_index),
-                                    mesos_task_id)
+                                    mesos_task_id, task.addr)
+
                         logger.info('Out of %d tasks '
                                     '%d tasks have been registered',
                                     len(self.tasks), task_start_count)
