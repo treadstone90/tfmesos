@@ -9,3 +9,4 @@ pymesos==0.2.9
 six==1.10.0
 tensorflow-gpu==0.12.0
 zkpython==0.4.2
+apache-aurora-client==0.18.0

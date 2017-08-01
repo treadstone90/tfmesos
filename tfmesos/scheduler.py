@@ -3,13 +3,20 @@ import sys
 import math
 import select
 import socket
-import getpass
 import logging
 import textwrap
+
 from addict import Dict
+from gen.apache.aurora.api.ttypes import AssignedTask
+from gen.apache.aurora.api.constants import AURORA_EXECUTOR_NAME, \
+    TASK_FILESYSTEM_MOUNT_POINT
 from six import iteritems
 from six.moves import urllib
-from pymesos import Scheduler, MesosSchedulerDriver
+from pymesos import Scheduler, MesosSchedulerDriver, encode_data
+from thrift.protocol import TBinaryProtocol
+from thrift.transport import TTransport
+
+from tfmesos.aurora_utils import get_job_config, create_process
 from tfmesos.utils import send, recv, setup_logger
 import uuid
 
@@ -34,7 +41,8 @@ class Job(object):
 class Task(object):
 
     def __init__(self, mesos_task_id, job_name, task_index,
-                 cpus=1.0, mem=1024.0, gpus=0, cmd=None, volumes={}):
+                 cpus=1.0, mem=1024.0, gpus=0, cmd=None,
+                 volumes=None):
         self.mesos_task_id = mesos_task_id
         self.job_name = job_name
         self.task_index = task_index
@@ -49,6 +57,7 @@ class Task(object):
         self.addr = None
         self.connection = None
         self.initalized = False
+        self.aurora_job_config = None
 
     def __str__(self):
         return textwrap.dedent('''
@@ -56,6 +65,123 @@ class Task(object):
           mesos_task_id=%s
           addr=%s
         >''' % (self.mesos_task_id, self.addr))
+
+    def make_container(self, container_config):
+        container = Dict()
+        if container_config.mesos is not None:
+            container.type = 'MESOS'
+            mesos_container_config = container_config.mesos
+
+            mesos_info = Dict()
+            volume = Dict()
+
+            if mesos_container_config.image is not None:
+                docker_image = Dict()
+                docker_image.type = 'DOCKER'
+                docker_image.name = '{}:{}'.format(
+                    mesos_container_config.image.docker.name,
+                    mesos_container_config.image.docker.tag)
+
+                mesos_info.image = docker_image
+
+                volume.container_path = TASK_FILESYSTEM_MOUNT_POINT
+                volume.mode = 'RO'
+                volume.image = docker_image
+                container.volumes = [volume]
+
+            container.mesos = mesos_info
+
+        else:
+            container.type = 'DOCKER'
+            container.docker = self._make_docker_info(container_config.docker)
+            container.volumes = None
+
+        return container
+
+
+    def _make_docker_info(self, docker_container_config):
+        """
+            Convert MesosContainer to its mesos equivalent.
+            :param mesos_container_config:
+            :return:
+        """
+        docker_container = Dict()
+
+        if docker_container_config.image is not None:
+            docker_container.image = docker_container_config.image
+        else:
+            raise Exception()
+
+        return docker_container
+
+
+    def _make_assigned_task(self, task_config, offer):
+        return AssignedTask(self.mesos_task_id,
+                            offer.agent_id.value, offer.hostname,
+                            task=task_config,
+                            instanceId=0, assignedPorts={})
+
+    def _serialize_thrift(self, thrift_struct):
+        transport_out = TTransport.TMemoryBuffer()
+        protocol_out = TBinaryProtocol.TBinaryProtocol(transport_out)
+        thrift_struct.write(protocol_out)
+        return transport_out.getvalue()
+
+    def to_thermos_task(self, framework_id, offer):
+        task_config = self.aurora_job_config.taskConfig
+        ti = Dict()
+        ti.task_id.value = str(self.mesos_task_id)
+        ti.agent_id.value = offer.agent_id.value
+        ti.name = '/job:%s/task:%s' % (self.job_name, self.task_index)
+        resources = []
+
+        for res in task_config.resources:
+            resource = Dict()
+            if res.numCpus is not None:
+                resource.name = 'cpus'
+                resource.type = 'SCALAR'
+                resource.scalar.value = res.numCpus
+            elif res.ramMb is not None:
+                resource.name = 'mem'
+                resource.type = 'SCALAR'
+                resource.scalar.value = res.ramMb
+            elif res.diskMb is not None:
+                resource.name = 'disk'
+                resource.type = 'SCALAR'
+                resource.scalar.value = res.diskMb
+
+            resources.append(resource)
+
+        ti.resources = resources
+
+        ti.executor = self._make_executor_info(framework_id, task_config.container)
+        ti.data = encode_data(self._serialize_thrift(self._make_assigned_task(task_config, offer)))
+        return ti
+
+    def _make_executor_info(self, framework_id, container_config):
+        executor_info = Dict()
+        executor_info.type = 'CUSTOM'
+        executor_info.executor_id = Dict()
+        executor_info.executor_id.value = 'tfmesos-{}-{}'.format(self.job_name, self.mesos_task_id)
+        executor_info.framework_id = framework_id
+        executor_info.command = self._make_executor_command_info()
+        executor_info.name = AURORA_EXECUTOR_NAME
+        executor_info.container = self.make_container(container_config)
+        return executor_info
+
+    def _make_executor_command_info(self):
+        uris = ['/usr/share/aurora/bin/thermos_executor.pex']
+        command_info = Dict()
+        command_info.value = "${MESOS_SANDBOX=.}/thermos_executor.pex"
+        command_info.uris = map(lambda x: self._make_command_info(x), uris)
+
+        return command_info
+
+    def _make_command_info(self, uri):
+        command_info = Dict()
+        command_info.value = uri
+        command_info.executable = True
+        return command_info
 
     def to_task_info(self, offer, master_addr, gpu_uuids=[],
                      gpu_resource_type=None, containerizer_type='MESOS',
@@ -159,6 +285,7 @@ class Task(object):
                 gpus.scalar.value = len(gpu_uuids)
 
         ti.command.shell = True
+
         cmd = [
             sys.executable, '-m', '%s.server' % __package__,
             str(self.mesos_task_id), master_addr
@@ -178,7 +305,7 @@ class TFMesosScheduler(Scheduler):
     def __init__(self, task_spec, role=None, master=None, name=None,
                  quiet=False, volumes={}, containerizer_type=None,
                  force_pull_image=False, forward_addresses=None,
-                 protocol='grpc'):
+                 protocol='grpc', thermos_config=None):
         self.started = False
         self.master = master or os.environ['MESOS_MASTER']
         self.name = name or '[tensorflow] %s %s' % (
@@ -192,11 +319,15 @@ class TFMesosScheduler(Scheduler):
         self.tasks = {}
         self.task_failure_count = {}
         self.job_finished = {}
+        self.framework_id = None
+        self.thermos_config = thermos_config
+
         for job in task_spec:
             self.job_finished[job.name] = 0
             for task_index in range(job.start, job.num):
                 mesos_task_id = str(uuid.uuid4())
-                task = Task(
+                task = \
+                    Task(
                         mesos_task_id,
                         job.name,
                         task_index,
@@ -216,7 +347,6 @@ class TFMesosScheduler(Scheduler):
         '''
         Offer resources and launch tasks
         '''
-
         for offer in offers:
             if all(task.offered for id, task in iteritems(self.tasks)):
                 self.driver.suppressOffers()
@@ -258,14 +388,10 @@ class TFMesosScheduler(Scheduler):
                 offered_gpus = offered_gpus[gpus:]
                 task.offered = True
                 offered_tasks.append(
-                    task.to_task_info(
-                        offer, self.addr, gpu_uuids=gpu_uuids,
-                        gpu_resource_type=gpu_resource_type,
-                        containerizer_type=self.containerizer_type,
-                        force_pull_image=self.force_pull_image
-                    )
+                    task.to_thermos_task(self.framework_id, offer)
                 )
 
+            print offered_tasks
             driver.launchTasks(offer.id, offered_tasks)
 
     @property
@@ -318,10 +444,13 @@ class TFMesosScheduler(Scheduler):
             self.addr = '%s:%s' % (socket.gethostname(), lfd.getsockname()[1])
             lfd.listen(10)
             framework = Dict()
-            framework.user = getpass.getuser()
+            framework.user = "root"
             framework.name = self.name
             framework.hostname = socket.gethostname()
             framework.role = self.role
+
+            for task_id, task in iteritems(self.tasks):
+                task.aurora_job_config = self.get_aurora_job_config(task, self.addr)
 
             self.driver = MesosSchedulerDriver(
                 self, framework, self.master, use_addict=True
@@ -358,12 +487,50 @@ class TFMesosScheduler(Scheduler):
         finally:
             lfd.close()
 
+    def get_aurora_job_config(self, task, master_addr):
+        cmd = [
+            'python -m',
+            'tfmesos.server',
+            '{{thermos.task_id}}',
+            master_addr
+        ]
+
+        self.thermos_config['command'] = ' '.join(cmd)
+        self.thermos_config['container'] = {
+            "type": self.containerizer_type,
+            "image":os.environ.get('DOCKER_IMAGE')
+        }
+
+        self.thermos_config['cpus'] = task.cpus
+        self.thermos_config['disk'] = 100
+        self.thermos_config['mem'] = task.mem
+        self.thermos_config['gpus'] = task.gpus
+
+        finalizer = None
+
+        if 'finalizer' in self.thermos_config:
+            finalizer = create_process(
+                cmdline=self.thermos_config['finalizer']['cmd'],
+                process_name=self.thermos_config['finalizer']['name'],
+                final=True)
+
+        aurora_job_config = get_job_config(self.thermos_config,
+                                           self.thermos_config['cluster'],
+                                           self.thermos_config['ownerName'],
+                                           self.thermos_config['environment'],
+                                           'tfmesos_server',
+                                           child_processes=[finalizer])
+
+        return aurora_job_config
+
     def registered(self, driver, framework_id, master_info):
         logger.info(
             'Tensorflow cluster registered. '
             '( http://%s:%s/#/frameworks/%s )',
             master_info.hostname, master_info.port, framework_id.value
         )
+
+        self.framework_id = framework_id
 
         if self.containerizer_type is None:
             version = tuple(int(x) for x in driver.version.split("."))
@@ -372,7 +539,7 @@ class TFMesosScheduler(Scheduler):
             )
 
     def statusUpdate(self, driver, update):
-        logger.debug('Received status update %s', str(update.state))
+        logger.info('Received status update %s', str(update.state))
         mesos_task_id = update.task_id.value
         if self._is_terminal_state(update.state):
             task = self.tasks.get(mesos_task_id)
@@ -401,7 +568,7 @@ class TFMesosScheduler(Scheduler):
 
                 self.task_failure_count[self.decorated_task_index(task)] += 1
 
-                if self.can_revive_task(task):
+                if self._can_revive_task(task):
                     self.revive_task(driver, mesos_task_id, task)
                 else:
                     raise RuntimeError('Task %s failed %s with state %s and '

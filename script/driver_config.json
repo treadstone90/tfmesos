@@ -1,0 +1,9 @@
+{
+  "ownerName": "karthik",
+  "finalizer": {
+    "name": "remove_dir",
+    "cmd": "rm -rf training_dir"
+  },
+  "cluster": "overwatch-dev",
+  "environment": "prod"
+}

@@ -3,6 +3,8 @@
 import sys
 import socket
 import subprocess
+
+import os
 import tensorflow as tf
 from tfmesos.utils import send, recv
 
@@ -68,9 +70,16 @@ def main(argv):
             ps_hosts=ps_hosts, worker_hosts=worker_hosts,
             job_name=job_name, task_index=task_index
         )
-        subprocess.check_call(cmd, shell=True, cwd=cwd, stdout=forward_fd)
-        if forward_fd:
-            forward_fd.close()
+
+        # try:
+        print os.environ['MESOS_SANDBOX']
+        subprocess.check_call(cmd, shell=True,
+                              cwd=os.environ['MESOS_SANDBOX'], stdout=forward_fd)
+        # finally:
+            # if extra_config['finalizer'] is not None:
+            #     final_cmd = extra_config['finalizer']
+            #     logger.info('Running clean up command {}'.format(final_cmd))
+            #     subprocess.check_call(final_cmd, shell=True)
 
 
 if __name__ == '__main__':
