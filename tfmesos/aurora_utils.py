@@ -189,7 +189,6 @@ def create_container_config(container_dict):
     :param container_dict:
     :return: Container object
     """
-    print container_dict
     if container_dict is None:
         return None
     else:

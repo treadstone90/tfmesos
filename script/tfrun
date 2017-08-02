@@ -7,7 +7,6 @@ import select
 import socket
 import sys
 
-from six.moves import xrange
 from tfmesos import cluster
 
 parser = argparse.ArgumentParser()
@@ -23,9 +22,11 @@ parser.add_argument('-f', '--force_pull_image', action="store_true")
 parser.add_argument('-Cw', '--worker-cpus', type=float, default=1.0)
 parser.add_argument('-Gw', '--worker-gpus', type=int, default=0)
 parser.add_argument('-Mw', '--worker-mem', type=float, default=1024.0)
+parser.add_argument('-Dw', '--worker-disk', type=float, default=10240.0)
 parser.add_argument('-Cs', '--server-cpus', type=float, default=1.0)
 parser.add_argument('-Gs', '--server-gpus', type=int, default=0)
 parser.add_argument('-Ms', '--server-mem', type=float, default=1024.0)
+parser.add_argument('-Ds', '--server-disk', type=float, default=10240.0)
 parser.add_argument('-v', '--verbose', action='store_true')
 parser.add_argument('-V', '--volume', type=str, action='append')
 parser.add_argument('-r', '--role', type=str, action='store')
@@ -71,6 +72,7 @@ jobs_def = [
         cpus=args.server_cpus,
         gpus=args.server_gpus,
         mem=args.server_mem,
+        disk=args.server_disk,
         cmd=cmd,
     ),
     dict(
@@ -79,6 +81,7 @@ jobs_def = [
         cpus=args.worker_cpus,
         gpus=args.worker_gpus,
         mem=args.worker_mem,
+        disk=args.worker_disk,
         cmd=cmd,
     ),
 ]

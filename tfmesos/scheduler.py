@@ -27,13 +27,14 @@ logger = logging.getLogger(__name__)
 
 class Job(object):
 
-    def __init__(self, name, num, cpus=1.0, mem=1024.0,
+    def __init__(self, name, num, cpus=1.0, mem=1024.0, disk=10240.0,
                  gpus=0, cmd=None, start=0):
         self.name = name
         self.num = num
         self.cpus = cpus
         self.gpus = gpus
         self.mem = mem
+        self.disk = disk
         self.cmd = cmd
         self.start = start
 
@@ -41,7 +42,7 @@ class Job(object):
 class Task(object):
 
     def __init__(self, mesos_task_id, job_name, task_index,
-                 cpus=1.0, mem=1024.0, gpus=0, cmd=None,
+                 cpus=1.0, mem=1024.0, disk=10240.0, gpus=0, cmd=None,
                  volumes=None):
         self.mesos_task_id = mesos_task_id
         self.job_name = job_name
@@ -51,7 +52,7 @@ class Task(object):
         self.gpus = gpus
         self.mem = mem
         #Disk quota in mb
-        self.disk = 100000
+        self.disk = disk
         self.cmd = cmd
         self.volumes = volumes
         self.offered = False
@@ -100,7 +101,6 @@ class Task(object):
 
         return container
 
-
     def _make_docker_info(self, docker_container_config):
         """
             Convert MesosContainer to its mesos equivalent.
@@ -116,14 +116,14 @@ class Task(object):
 
         return docker_container
 
-
     def _make_assigned_task(self, task_config, offer):
         return AssignedTask(self.mesos_task_id,
                             offer.agent_id.value, offer.hostname,
                             task=task_config,
                             instanceId=0, assignedPorts={})
 
-    def _serialize_thrift(self, thrift_struct):
+    @staticmethod
+    def _serialize_thrift(thrift_struct):
         transport_out = TTransport.TMemoryBuffer()
         protocol_out = TBinaryProtocol.TBinaryProtocol(transport_out)
         thrift_struct.write(protocol_out)
@@ -179,7 +179,8 @@ class Task(object):
 
         return command_info
 
-    def _make_command_info(self, uri):
+    @staticmethod
+    def _make_command_info(uri):
         command_info = Dict()
         command_info.value = uri
         command_info.executable = True
@@ -337,6 +338,7 @@ class TFMesosScheduler(Scheduler):
                         cpus=job.cpus,
                         mem=job.mem,
                         gpus=job.gpus,
+                        disk=job.disk,
                         cmd=job.cmd,
                         volumes=volumes
                     )
@@ -356,7 +358,7 @@ class TFMesosScheduler(Scheduler):
                 driver.declineOffer(offer.id, Dict(refuse_seconds=FOREVER))
                 continue
 
-            offered_cpus = offered_mem = 0.0
+            offered_cpus = offered_mem = offered_disk = 0.0
             offered_gpus = []
             offered_tasks = []
             gpu_resource_type = None
@@ -366,6 +368,8 @@ class TFMesosScheduler(Scheduler):
                     offered_cpus = resource.scalar.value
                 elif resource.name == 'mem':
                     offered_mem = resource.scalar.value
+                elif resource.name == 'disk':
+                    offered_disk = resource.scalar.value
                 elif resource.name == 'gpus':
                     if resource.type == 'SET':
                         offered_gpus = resource.set.item
@@ -380,21 +384,34 @@ class TFMesosScheduler(Scheduler):
 
                 if not (task.cpus <= offered_cpus and
                         task.mem <= offered_mem and
+                        task.disk <= offered_disk and
                         task.gpus <= len(offered_gpus)):
 
                     continue
 
                 offered_cpus -= task.cpus
                 offered_mem -= task.mem
+                offered_disk -= task.disk
                 gpus = int(math.ceil(task.gpus))
                 gpu_uuids = offered_gpus[:gpus]
                 offered_gpus = offered_gpus[gpus:]
                 task.offered = True
-                offered_tasks.append(
-                    task.to_thermos_task(self.framework_id, offer)
-                )
 
-            print offered_tasks
+
+                if self.thermos_config:
+                    offered_tasks.append(
+                        task.to_thermos_task(self.framework_id, offer)
+                    )
+                else:
+                    offered_tasks.append(
+                        task.to_task_info(
+                            offer, self.addr, gpu_uuids=gpu_uuids,
+                            gpu_resource_type=gpu_resource_type,
+                            containerizer_type=self.containerizer_type,
+                            force_pull_image=self.force_pull_image
+                        )
+                    )
+
             driver.launchTasks(offer.id, offered_tasks)
 
     @property
@@ -514,7 +531,7 @@ class TFMesosScheduler(Scheduler):
         }
 
         self.thermos_config['cpus'] = task.cpus
-        self.thermos_config['disk'] = 100
+        self.thermos_config['disk'] = task.disk
         self.thermos_config['mem'] = task.mem
         self.thermos_config['gpus'] = task.gpus
 
@@ -551,7 +568,7 @@ class TFMesosScheduler(Scheduler):
             )
 
     def statusUpdate(self, driver, update):
-        logger.info('Received status update %s', str(update.state))
+        logger.debug('Received status update %s', str(update.state))
         mesos_task_id = update.task_id.value
         if self._is_terminal_state(update.state):
             task = self.tasks.get(mesos_task_id)
@@ -618,8 +635,12 @@ class TFMesosScheduler(Scheduler):
 
     def executorLost(self, driver, executor_id, agent_id, status):
         if self.started:
-            logger.error('Executor %s lost:', executor_id.value)
-            raise RuntimeError('Executor %s@%s lost' % (executor_id, agent_id))
+            if status != 0:
+                logger.error('Executor %s lost with status %d', executor_id.value,
+                             status)
+            else:
+                logger.info('Executor %s completed on agent %s',
+                             executor_id.value, agent_id.value)
 
     def error(self, driver, message):
         logger.error('Mesos error: %s', message)
